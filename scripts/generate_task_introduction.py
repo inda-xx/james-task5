@@ -1,7 +1,6 @@
 import os
 import sys
-import subprocess  # Ensure subprocess is imported
-from datetime import datetime
+import subprocess
 from openai import OpenAI
 import pytz
 from pytz import timezone
@@ -13,40 +12,57 @@ def main(api_key):
 
     client = OpenAI(api_key=api_key)
 
-    # Extract theme and language from environment variables
-    theme = os.getenv("TASK_THEME", "Create a basic Java application with the following requirements.")
-    language = os.getenv("TASK_LANGUAGE", "English")
-    learning_goals = os.getenv("LEARNING_GOALS", "")
-
-    prompt = (
-        f"Create an engaging introduction in {language} for a programming task with the theme: {theme}. "
-        f"Include theoretical background and set the context. "
-        f"Ensure the introduction aligns with the following learning goals:\n{learning_goals}. "
-        f"Use a similar style and structure to the original task provided."
-    )
-
-    # Call OpenAI API to generate the introduction
-    response_content = generate_with_retries(client, prompt, max_retries=3)
-    if response_content is None:
-        print("Error: Failed to generate task introduction after multiple retries.")
+    # Read the original task as inspiration
+    original_task_path = os.path.join("tasks", "original_task.md")
+    try:
+        with open(original_task_path, "r") as file:
+            original_task_content = file.read()
+    except FileNotFoundError:
+        print("Error: original_task.md file not found in 'tasks' directory.")
         sys.exit(1)
 
-    # Create a new branch with a unique name
-    stockholm_tz = timezone('Europe/Stockholm')
-    branch_name = f"task-{datetime.now(stockholm_tz).strftime('%Y%m%d%H%M')}"
-    create_branch(branch_name)
-
-    # Write the response content to a markdown file
+    # Read the existing task introduction
     task_file_path = os.path.join("tasks", "new_task.md")
-    with open(task_file_path, "w") as file:
-        file.write("# Task Introduction\n\n")
-        file.write(response_content)
+    try:
+        with open(task_file_path, "r") as file:
+            task_description = file.read()
+    except FileNotFoundError:
+        print("Error: new_task.md file not found in 'tasks' directory.")
+        sys.exit(1)
+
+    # Embed learning goals directly into the script
+    learning_goals = [
+        "Understanding arrays",
+        "Working with loops",
+        # Add more learning goals as needed
+    ]
+
+    # Generate task introduction
+    introduction = generate_introduction(client, learning_goals, original_task_content)
+
+    # Append introduction to new_task.md
+    with open(task_file_path, "a") as file:
+        file.write("\n\n# Task Introduction\n\n" + introduction)
 
     # Commit and push changes
-    commit_and_push_changes(branch_name, task_file_path)
+    commit_and_push_changes(task_file_path)
 
     # Output the branch name for the next job
+    branch_name = get_current_branch()
     print(f"::set-output name=branch_name::{branch_name}")
+
+def generate_introduction(client, learning_goals, original_task):
+    prompt = (
+        f"In English, based on the following original task description:\n\n{original_task}\n\n"
+        f"Create an engaging introduction for a programming task. "
+        f"Include a brief overview of the task's purpose and how it relates to the learning goals:\n"
+    )
+    for goal in learning_goals:
+        prompt += f"- {goal}\n"
+
+    prompt += "Keep the introduction concise and focused on programming concepts."
+
+    return generate_with_retries(client, prompt)
 
 def generate_with_retries(client, prompt, max_retries=3):
     for attempt in range(max_retries):
@@ -54,44 +70,39 @@ def generate_with_retries(client, prompt, max_retries=3):
             response = client.chat.completions.create(
                 model="gpt-4o-2024-08-06",
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant specialized in generating educational content."},
+                    {"role": "system", "content": "You are a helpful assistant specialized in generating concise programming educational content."},
                     {"role": "user", "content": prompt}
-                ]
+                ],
+                temperature=0.5,
+                max_tokens=300
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            print(f"Error generating task introduction: {e}")
+            print(f"Error generating introduction: {e}")
             if attempt < max_retries - 1:
                 print("Retrying...")
-    return None
+    print("Failed to generate introduction after multiple retries.")
+    sys.exit(1)
 
-def create_branch(branch_name):
-    try:
-        subprocess.run(["git", "checkout", "-b", branch_name], check=True)
-        subprocess.run(
-            ["git", "push", "-u", "origin", branch_name],
-            check=True,
-            env=dict(os.environ, GIT_ASKPASS='echo', GIT_USERNAME='x-access-token', GIT_PASSWORD=os.getenv('GITHUB_TOKEN'))
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"Error creating branch: {e}")
-        sys.exit(1)
-
-def commit_and_push_changes(branch_name, task_file_path):
+def commit_and_push_changes(task_file_path):
     try:
         # Configure Git locally
         subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
 
         subprocess.run(["git", "add", task_file_path], check=True)
-        subprocess.run(["git", "commit", "-m", f"Add task introduction: {branch_name}"], check=True)
-        subprocess.run(
-            ["git", "push", "--set-upstream", "origin", branch_name],
-            check=True,
-            env=dict(os.environ, GIT_ASKPASS='echo', GIT_USERNAME='x-access-token', GIT_PASSWORD=os.getenv('GITHUB_TOKEN'))
-        )
+        subprocess.run(["git", "commit", "-m", "Add task introduction"], check=True)
+        subprocess.run(["git", "push"], check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error committing and pushing changes: {e}")
+        sys.exit(1)
+
+def get_current_branch():
+    try:
+        result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        print(f"Error retrieving current branch: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

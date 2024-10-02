@@ -93,8 +93,6 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TASK_LANGUAGE: ${{ github.event.inputs.language }}
-          LEARNING_GOALS: ${{ github.event.inputs.learning_goals }}
           INCLUDE_MODULES: ${{ github.event.inputs.include_modules }}
         run: |
           python scripts/generate_task_modules.py "${{ secrets.OPENAI_TOKEN }}" "${{ github.event.inputs.include_modules }}"

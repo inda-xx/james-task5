@@ -28,8 +28,12 @@ def main(api_key, include_modules):
         print("Error: new_task.md file not found in 'tasks' directory.")
         sys.exit(1)
 
-    language = os.getenv("TASK_LANGUAGE", "English")
-    learning_goals = os.getenv("LEARNING_GOALS", "")
+    # Embed learning goals directly into the script
+    learning_goals = [
+        "Understanding arrays",
+        "Working with loops",
+        
+    ]
 
     # Parse included modules
     modules = [module.strip().lower() for module in include_modules.split(',')]
@@ -38,21 +42,21 @@ def main(api_key, include_modules):
     generated_content = ""
 
     if 'preparation' in modules:
-        preparation = generate_preparation(client, language, original_task_content, learning_goals)
-        generated_content += "\n\n## 📝 Preparation\n\n" + preparation
+        preparation = generate_preparation(client, learning_goals, original_task_content)
+        generated_content += "\n\n### 📝 Preparation\n\n" + preparation
 
     if 'learning_goals' in modules:
-        learning_goals_section = generate_learning_goals(client, learning_goals, language, original_task_content)
-        generated_content += "\n\n## ✅ Learning Goals\n\n" + learning_goals_section
+        learning_goals_section = generate_learning_goals(client, learning_goals, original_task_content)
+        generated_content += "\n\n### ✅ Learning Goals\n\n" + learning_goals_section
 
     if 'assignment' in modules:
-        assignment = generate_assignment(client, language, original_task_content, learning_goals)
-        generated_content += "\n\n## 🏛 Assignment\n\n" + assignment
+        assignment = generate_assignment(client, learning_goals, original_task_content)
+        generated_content += "\n\n### 🏛 Assignment\n\n" + assignment
 
     if 'exercises' in modules:
-        exercises = generate_exercises(client, language, original_task_content, learning_goals)
+        exercises = generate_exercises(client, learning_goals, original_task_content)
         for idx, exercise in enumerate(exercises, start=1):
-            generated_content += f"\n\n#### Exercise {idx}\n\n" + exercise
+            generated_content += f"\n\n#### Exercise {idx} -- {exercise['title']}\n\n" + exercise['content']
 
     # Append generated content to new_task.md
     with open(task_file_path, "a") as file:
@@ -61,45 +65,80 @@ def main(api_key, include_modules):
     # Commit and push changes
     commit_and_push_changes(task_file_path)
 
-def generate_preparation(client, language, original_task, learning_goals):
+def generate_preparation(client, learning_goals, original_task):
     prompt = (
-        f"In {language}, based on the following original task description:\n\n{original_task}\n\n"
+        f"In English, based on the following original task description:\n\n{original_task}\n\n"
         f"List the preparation steps students should take before starting the task. "
         f"Include any necessary readings, resources, or prerequisites. "
-        f"Ensure the preparation aligns with the learning goals:\n{learning_goals}."
+        f"Ensure the preparation aligns with the following learning goals:\n"
     )
+    for goal in learning_goals:
+        prompt += f"- {goal}\n"
+
+    prompt += "Provide concise bullet points without extended explanations."
+
     return generate_with_retries(client, prompt)
 
-def generate_learning_goals(client, learning_goals, language, original_task):
+def generate_learning_goals(client, learning_goals, original_task):
     prompt = (
-        f"In {language}, based on the following original task description:\n\n{original_task}\n\n"
-        f"Outline the learning goals for the task, focusing on:\n{learning_goals}. "
-        f"Present them in a clear, bullet-point format."
+        f"In English, based on the following original task description:\n\n{original_task}\n\n"
+        f"Outline the learning goals for the task, focusing on:\n"
     )
+    for goal in learning_goals:
+        prompt += f"- {goal}\n"
+
+    prompt += "Present them in a clear, bullet-point format with brief descriptions for each goal."
+
     return generate_with_retries(client, prompt)
 
-def generate_assignment(client, language, original_task, learning_goals):
+def generate_assignment(client, learning_goals, original_task):
     prompt = (
-        f"In {language}, based on the following original task description:\n\n{original_task}\n\n"
+        f"In English, based on the following original task description:\n\n{original_task}\n\n"
         f"Provide a detailed assignment description. "
         f"Explain what students are expected to do, including any specific requirements or guidelines. "
-        f"Ensure the assignment aligns with the learning goals:\n{learning_goals}."
+        f"Ensure the assignment aligns with the following learning goals:\n"
     )
+    for goal in learning_goals:
+        prompt += f"- {goal}\n"
+
+    prompt += "Keep the instructions clear and focused on programming tasks without unnecessary theoretical elaboration."
+
     return generate_with_retries(client, prompt)
 
-def generate_exercises(client, language, original_task, learning_goals):
+def generate_exercises(client, learning_goals, original_task):
     exercises = []
     difficulty_levels = ["easy", "medium", "hard", "harder", "hardest"]
     for idx, difficulty in enumerate(difficulty_levels, start=1):
         prompt = (
-            f"In {language}, based on the following original task description and learning goals:\n\n{original_task}\n\n"
+            f"In English, based on the following original task description and learning goals:\n\n{original_task}\n\n"
             f"Create exercise {idx} with {difficulty} difficulty. "
-            f"Each exercise should build upon the previous ones and align with the learning goals:\n{learning_goals}. "
-            f"Ensure the exercise is challenging and well-suited for students to deepen their understanding. "
-            f"Maintain a similar structure and style to the provided examples."
+            f"Each exercise should build upon the previous ones and align with the learning goals:\n"
         )
-        exercise = generate_with_retries(client, prompt)
-        exercises.append(exercise)
+        for goal in learning_goals:
+            prompt += f"- {goal}\n"
+
+        prompt += (
+            f"Ensure the exercise is challenging and well-suited for students to deepen their understanding. "
+            f"Maintain a similar structure and style to the provided examples. "
+            f"Provide a clear problem statement and any necessary code snippets or examples."
+        )
+
+        exercise_content = generate_with_retries(client, prompt)
+
+        # Extract exercise title and content
+        # Assuming the model returns a title and content separated by a newline
+        lines = exercise_content.strip().split('\n', 1)
+        if len(lines) == 2:
+            title, content = lines
+        else:
+            title = f"Exercise {idx}"
+            content = exercise_content
+
+        exercises.append({
+            'title': title.strip(),
+            'content': content.strip()
+        })
+
     return exercises
 
 def generate_with_retries(client, prompt, max_retries=3):
@@ -108,9 +147,11 @@ def generate_with_retries(client, prompt, max_retries=3):
             response = client.chat.completions.create(
                 model="gpt-4o-2024-08-06",
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant specialized in generating educational content."},
+                    {"role": "system", "content": "You are a helpful assistant specialized in generating concise programming educational content."},
                     {"role": "user", "content": prompt}
-                ]
+                ],
+                temperature=0.5,  # Lower temperature for more deterministic output
+                max_tokens=500  # Adjust as needed
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
