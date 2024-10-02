@@ -53,11 +53,6 @@ def main(api_key, branch_name):
                     "role": "user",
                     "content": (
                         "// Example of a simple class modeling arrays\n"
-                        "/**\n"
-                        "* Reference solutions for Task 5, Arrays\n"
-                        "* @author Linus Östlund\n"
-                        "* This would not have been possible without my computer, a M1 Macbook Air.\n"
-                        "*/\n"
                         "public class Arrays {\n"
                         "    public static int average(int[] array) {\n"
                         "        int sum = 0;\n"
