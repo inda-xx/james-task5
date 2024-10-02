@@ -2,18 +2,19 @@ import os
 import sys
 import subprocess
 from datetime import datetime
-import openai
 import pytz
 from pytz import timezone
+
+# Import the OpenAI module as per your setup
+from openai import OpenAI
 
 def main(api_key):
     if not api_key:
         print("Error: OpenAI API key is missing.")
         sys.exit(1)
 
-    # Initialize OpenAI client
-    client = openai
-    client.api_key = api_key
+    # Initialize the OpenAI client
+    client = OpenAI(api_key=api_key)
 
     # Extract theme and language from environment variables
     theme = os.getenv("TASK_THEME", "Create a basic Java application with the following requirements.")
@@ -21,11 +22,11 @@ def main(api_key):
 
     # Extract learning goals
     learning_goals = """
-    * Working with `Arrays`
-    * Understanding the `static` keyword
-    * Working with `ArrayLists`
-    * Combining loops and collections
-    """
+* Working with `Arrays`
+* Understanding the `static` keyword
+* Working with `ArrayLists`
+* Combining loops and collections
+"""
 
     # Read the original task from file
     original_task_path = os.path.join("tasks", "original_task.md")
@@ -94,11 +95,11 @@ def split_task_into_exercises(task_content):
 def generate_with_retries(client, messages, max_retries=3):
     for attempt in range(max_retries):
         try:
-            response = client.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-4o-2024-08-06",
                 messages=messages
             )
-            return response['choices'][0]['message']['content'].strip()
+            return response.choices[0].message.content.strip()
         except Exception as e:
             print(f"Error generating task description: {e}")
             if attempt < max_retries - 1:
