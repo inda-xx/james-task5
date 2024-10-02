@@ -28,11 +28,14 @@ def main(api_key, include_modules):
         print("Error: new_task.md file not found in 'tasks' directory.")
         sys.exit(1)
 
-    # Embed learning goals directly into the script
+    # Define learning goals directly within the script
     learning_goals = [
         "Understanding arrays",
         "Working with loops",
-        
+        "Understanding the `static` keyword",
+        "Working with `ArrayLists`",
+        "Combining loops and collections"
+        # Add more learning goals as needed
     ]
 
     # Parse included modules

@@ -12,20 +12,14 @@ on:
         required: true
         type: choice
         options:
+          - easy
           - medium
+          - hard
         default: medium
       language:
         description: 'Natural language for the task description'
         required: true
         default: 'English'
-      learning_goals:
-        description: 'Learning goals for the new task (provide as bullet points)'
-        required: true
-        default: '* Understanding arrays\n* Working with loops'
-      include_modules:
-        description: 'Comma-separated list of modules to include (e.g., preparation,learning_goals,assignment,exercises)'
-        required: false
-        default: 'preparation,learning_goals,assignment,exercises'
 
 permissions:
   contents: write  
@@ -54,10 +48,8 @@ jobs:
         id: generate-task-introduction
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TASK_THEME: ${{ github.event.inputs.theme }}
           TASK_LANGUAGE: ${{ github.event.inputs.language }}
-          LEARNING_GOALS: ${{ github.event.inputs.learning_goals }}
         run: |
           python scripts/generate_task_introduction.py "${{ secrets.OPENAI_TOKEN }}"
 
@@ -92,10 +84,9 @@ jobs:
         id: generate-task-modules
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INCLUDE_MODULES: ${{ github.event.inputs.include_modules }}
+          INCLUDE_MODULES: 'preparation,learning_goals,assignment,exercises'
         run: |
-          python scripts/generate_task_modules.py "${{ secrets.OPENAI_TOKEN }}" "${{ github.event.inputs.include_modules }}"
+          python scripts/generate_task_modules.py "${{ secrets.OPENAI_TOKEN }}" "${{ env.INCLUDE_MODULES }}"
 
       - name: Set branch name
         id: set-branch-name
@@ -125,7 +116,6 @@ jobs:
       - name: Generate solutions
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python scripts/generate_solution.py "${{ secrets.OPENAI_TOKEN }}" "${{ needs.generate-task-modules.outputs.branch_name }}"
 
@@ -159,7 +149,6 @@ jobs:
       - name: Adversarial Review - Improve Solution
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python scripts/adversarial_solution.py "${{ secrets.OPENAI_TOKEN }}" "tasks/new_task.md" ".hidden_tasks"
 
@@ -175,14 +164,14 @@ jobs:
 
   generate-tests:
     runs-on: ubuntu-latest
-    needs: generate-solution
+    needs: adversarial-review
     outputs:
       branch_name: ${{ steps.set-branch-name.outputs.branch_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          ref: ${{ needs.generate-solution.outputs.branch_name }}
+          ref: ${{ needs.adversarial-review.outputs.branch_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -197,9 +186,8 @@ jobs:
       - name: Generate tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python scripts/generate_tests.py "${{ secrets.OPENAI_TOKEN }}" "${{ needs.generate-solution.outputs.branch_name }}"
+          python scripts/generate_tests.py "${{ secrets.OPENAI_TOKEN }}" "${{ needs.adversarial-review.outputs.branch_name }}"
 
       - name: Set branch name
         id: set-branch-name
@@ -233,20 +221,19 @@ jobs:
       - name: Adversarial Review - Improve Tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python scripts/adversarial_tests.py "${{ secrets.OPENAI_TOKEN }}" "gen_test/"
 
   generate-template-code:
     runs-on: ubuntu-latest
-    needs: adversarial-review
+    needs: adversarial-test-review
     outputs:
       branch_name: ${{ steps.set-branch-name.outputs.branch_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          ref: ${{ needs.adversarial-review.outputs.branch_name }}
+          ref: ${{ needs.adversarial-test-review.outputs.branch_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -259,12 +246,10 @@ jobs:
           pip install openai
 
       - name: Generate template code
-        id: generate-template-code
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python scripts/generate_template_code.py "${{ secrets.OPENAI_TOKEN }}" "${{ needs.adversarial-review.outputs.branch_name }}"
+          python scripts/generate_template_code.py "${{ secrets.OPENAI_TOKEN }}" "${{ needs.adversarial-test-review.outputs.branch_name }}"
 
       - name: Set branch name
         id: set-branch-name

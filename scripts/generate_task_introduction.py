@@ -30,10 +30,13 @@ def main(api_key):
         print("Error: new_task.md file not found in 'tasks' directory.")
         sys.exit(1)
 
-    # Embed learning goals directly into the script
+    # Define learning goals directly within the script
     learning_goals = [
         "Understanding arrays",
         "Working with loops",
+        "Understanding the `static` keyword",
+        "Working with `ArrayLists`",
+        "Combining loops and collections"
         # Add more learning goals as needed
     ]
 
@@ -73,8 +76,8 @@ def generate_with_retries(client, prompt, max_retries=3):
                     {"role": "system", "content": "You are a helpful assistant specialized in generating concise programming educational content."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.5,
-                max_tokens=300
+                temperature=0.5,  # Lower temperature for more deterministic output
+                max_tokens=300  # Adjust as needed
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
