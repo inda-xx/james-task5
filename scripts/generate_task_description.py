@@ -22,11 +22,11 @@ def main(api_key):
 
     # Extract learning goals
     learning_goals = """
-* Working with `Arrays`
-* Understanding the `static` keyword
-* Working with `ArrayLists`
-* Combining loops and collections
-"""
+    * Working with `Arrays`
+    * Understanding the `static` keyword
+    * Working with `ArrayLists`
+    * Combining loops and collections
+    """
 
     # Read the original task from file
     original_task_path = os.path.join("tasks", "original_task.md")
