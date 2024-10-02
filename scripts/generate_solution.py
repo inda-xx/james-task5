@@ -1,26 +1,18 @@
 import os
 import sys
 import subprocess
+import openai
 from datetime import datetime
 import pytz
 from pytz import timezone
 
-# Import the OpenAI client
-from openai import OpenAI
-
-def main(api_key, branch_name):
+def main(api_key):
     if not api_key:
         print("Error: OpenAI API key is missing.")
         sys.exit(1)
-    if not branch_name:
-        print("Error: Branch name is missing.")
-        sys.exit(1)
 
-    # Initialize the OpenAI client
-    client = OpenAI(api_key=api_key)
-
-    # Checkout the branch where the new task exists
-    checkout_branch(branch_name)
+    # Initialize OpenAI API
+    openai.api_key = api_key
 
     # Read the new task from file
     new_task_path = os.path.join("tasks", "new_task.md")
@@ -33,103 +25,181 @@ def main(api_key, branch_name):
     # Split the new task into exercises
     exercise_chunks = split_task_into_exercises(new_task_content)
 
-    # Generate solutions for exercises that require coding (Exercises 3 to 6)
-    code_exercises = exercise_chunks[2:]  # Exercises 3 onwards
+    # Generate solutions for exercises that require coding
+    # Assuming that exercises requiring coding start from Exercise 3
+    coding_exercises = identify_coding_exercises(exercise_chunks)
 
-    for i, exercise in enumerate(code_exercises, start=3):
-        # Determine if the exercise requires coding
-        if requires_coding(exercise):
-            # Build messages for OpenAI API
-            messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert Java programmer and educator. Generate a complete and correct solution "
-                        "to the following exercise, including any necessary code. The code should be well-documented "
-                        "with comments where appropriate."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": f"Exercise {i} from the task:\n\n{exercise}\n\nPlease provide the complete solution code."
+    # Sample code to use as inspiration
+    sample_code = """
+    // Example of a simple class modeling arrays
+    /**
+    * Reference solutions for Task 5, Arrays
+    * @author Linus Östlund
+    * This would not have been possible without my computer, a M1 Macbook Air.
+    */
+    public class Arrays {
+
+        /**
+        * Count the average value of array with integers
+        * @param array of integers
+        * @return the average of element integer sum
+        */
+        public static int average(int[] array) {
+            int sum = 0;
+            for (int i = 0; i < array.length; i++) {
+                sum += array[i];
+            }
+            return sum / array.length;
+        }
+
+        // ... rest of the sample code ...
+    }
+
+    // Example of a simple class using array lists
+    import java.util.ArrayList;
+
+    public class SetTheory {
+
+        // The maximum threshold
+        private static final int MAX = 100;
+
+        /**
+        * Generate an ArrayList between min and max
+        * @param min lower bound, inclusive
+        * @param max upper bound, non-inclusive
+        * @return an ArrayList with all integers in [min, max - 1]
+        */
+        public static ArrayList<Integer> generateSet(int min, int max) {
+            ArrayList<Integer> set = new ArrayList<>();
+            if (min >= max) {
+                // return empty list
+                return set;
+            } else {
+                // Ternary operator to see if max > 100
+                for (int i = Math.max(min, 0); i < Math.min(max, MAX); i++) {
+                    set.add(i);
                 }
-            ]
+                return set;
+            }
+        }
 
-            # Call OpenAI API to generate the solution
-            solution_content = generate_with_retries(client, messages, max_retries=3)
-            if solution_content is None:
-                print(f"Error: Failed to generate solution for exercise {i} after multiple retries.")
-                continue
+        // ... rest of the sample code ...
+    }
+    """
 
-            # Save the solution code to .hidden_tasks
-            solution_file_name = f"Exercise_{i}_Solution.java"
-            hidden_tasks_dir = ".hidden_tasks"
-            os.makedirs(hidden_tasks_dir, exist_ok=True)
-            solution_file_path = os.path.join(hidden_tasks_dir, solution_file_name)
+    # Additional instructions to include in the prompt
+    additional_instructions = (
+        "Ensure that each class is saved in its own appropriately named file, and that there are no 'leftover' "
+        "initializers or class definitions from subsequent files.\n"
+        "Ensure all imports, public classes, and everything related to the class is included in the appropriate file.\n"
+        "Write NO TEXT beyond the code itself, whatsoever."
+    )
 
-            with open(solution_file_path, "w") as file:
-                file.write(solution_content)
+    # Generate solutions
+    for exercise_num, exercise_content in coding_exercises.items():
+        # Build the prompt for the AI
+        prompt = (
+            f"You are an expert Java programmer and educator. Generate a complete and correct solution "
+            f"to the following exercise, including any necessary code. The code should be robust, well-documented "
+            f"with comments where appropriate, and adhere to best practices.\n\n"
+            f"Exercise {exercise_num}:\n{exercise_content}\n\n"
+            f"Use the following sample code as inspiration:\n{sample_code}\n\n"
+            f"{additional_instructions}"
+        )
 
-            # Add the solution file to git
-            subprocess.run(["git", "add", solution_file_path], check=True)
+        # Call OpenAI API to generate the solution
+        solution_content = generate_with_retries(prompt, max_retries=3)
+        if solution_content is None:
+            print(f"Error: Failed to generate solution for exercise {exercise_num} after multiple retries.")
+            continue
+
+        # Save the solution code to .hidden_tasks
+        save_solution(solution_content, exercise_num)
 
     # Commit and push changes
-    commit_and_push_changes(branch_name, "Add solutions to exercises")
+    commit_and_push_changes("Add solutions to exercises")
 
 def split_task_into_exercises(task_content):
     # This function splits the task content into separate exercises
-    # For simplicity, let's assume that each exercise starts with '#### Exercise'
-    exercises = []
+    # Assuming each exercise starts with '#### Exercise'
+    exercises = {}
     lines = task_content.split('\n')
     current_exercise = []
-    in_exercise = False
+    exercise_num = None
     for line in lines:
         if line.strip().startswith('#### Exercise'):
-            if current_exercise:
-                exercises.append('\n'.join(current_exercise))
+            if current_exercise and exercise_num is not None:
+                exercises[exercise_num] = '\n'.join(current_exercise)
                 current_exercise = []
-            in_exercise = True
-        if in_exercise:
+            exercise_num = line.strip().split(' ')[2]
+        elif exercise_num is not None:
             current_exercise.append(line)
-    if current_exercise:
-        exercises.append('\n'.join(current_exercise))
+    if current_exercise and exercise_num is not None:
+        exercises[exercise_num] = '\n'.join(current_exercise)
     return exercises
+
+def identify_coding_exercises(exercises):
+    # Identify which exercises require coding
+    coding_exercises = {}
+    for num, content in exercises.items():
+        if requires_coding(content):
+            coding_exercises[num] = content
+    return coding_exercises
 
 def requires_coding(exercise_text):
     # Simple heuristic to determine if an exercise requires coding
-    keywords = ['Write a method', 'Implement', 'Create a class', 'Code', 'Program']
+    keywords = ['Write a method', 'Implement', 'Create a class', 'Code', 'Program', 'Develop', 'Design']
     return any(keyword.lower() in exercise_text.lower() for keyword in keywords)
 
-def generate_with_retries(client, messages, max_retries=3):
+def generate_with_retries(prompt, max_retries=3):
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-2024-08-06",
-                messages=messages
+            response = openai.Completion.create(
+                engine="gpt-4o-2024-08-06",
+                prompt=prompt,
+                max_tokens=1500,
+                temperature=0
             )
-            return response.choices[0].message.content.strip()
+            return response.choices[0].text.strip()
         except Exception as e:
             print(f"Error generating solution: {e}")
             if attempt < max_retries - 1:
                 print("Retrying...")
     return None
 
-def checkout_branch(branch_name):
-    try:
-        subprocess.run(["git", "fetch"], check=True)
-        subprocess.run(["git", "checkout", branch_name], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error checking out branch {branch_name}: {e}")
-        sys.exit(1)
+def save_solution(solution_content, exercise_num):
+    # Save the solution code to .hidden_tasks directory
+    hidden_tasks_dir = ".hidden_tasks"
+    os.makedirs(hidden_tasks_dir, exist_ok=True)
+    # Extract the class name from the code
+    class_name = extract_class_name(solution_content)
+    if not class_name:
+        class_name = f"Exercise_{exercise_num}_Solution"
+    file_name = f"{class_name}.java"
+    file_path = os.path.join(hidden_tasks_dir, file_name)
+    with open(file_path, "w") as file:
+        file.write(solution_content)
+    # Add the file to git
+    subprocess.run(["git", "add", file_path], check=True)
 
-def commit_and_push_changes(branch_name, commit_message):
+def extract_class_name(code):
+    # Simple parser to extract the class name from the code
+    lines = code.split('\n')
+    for line in lines:
+        if line.strip().startswith("public class"):
+            parts = line.strip().split()
+            if len(parts) >= 3:
+                return parts[2]
+    return None
+
+def commit_and_push_changes(commit_message):
     try:
         subprocess.run(["git", "config", "--global", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "config", "--global", "user.name", "github-actions"], check=True)
 
         subprocess.run(["git", "commit", "-m", commit_message], check=True)
         subprocess.run(
-            ["git", "push", "--set-upstream", "origin", branch_name],
+            ["git", "push"],
             check=True,
             env=dict(os.environ, GIT_ASKPASS='echo', GIT_USERNAME='x-access-token', GIT_PASSWORD=os.getenv('GITHUB_TOKEN'))
         )
@@ -137,11 +207,10 @@ def commit_and_push_changes(branch_name, commit_message):
         print(f"Error committing and pushing changes: {e}")
         sys.exit(1)
 
-if len(sys.argv) != 3:
-    print("Usage: python generate_solution.py <api_key> <branch_name>")
-    sys.exit(1)
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python generate_solution.py <api_key>")
+        sys.exit(1)
 
-api_key = sys.argv[1]
-branch_name = sys.argv[2]
-
-main(api_key, branch_name)
+    api_key = sys.argv[1]
+    main(api_key)
