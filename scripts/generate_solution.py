@@ -1,18 +1,15 @@
 import os
+import re
 import sys
 import subprocess
-import openai
-from datetime import datetime
-import pytz
-from pytz import timezone
+from openai import OpenAI
 
-def main(api_key):
+def main(api_key, branch_name):
     if not api_key:
         print("Error: OpenAI API key is missing.")
         sys.exit(1)
 
-    # Initialize OpenAI API
-    openai.api_key = api_key
+    client = OpenAI(api_key=api_key)
 
     # Read the new task from file
     new_task_path = os.path.join("tasks", "new_task.md")
@@ -117,7 +114,7 @@ def main(api_key):
         save_solution(solution_content, exercise_num)
 
     # Commit and push changes
-    commit_and_push_changes("Add solutions to exercises")
+    commit_and_push_changes(branch_name, "Add solutions to exercises")
 
 def split_task_into_exercises(task_content):
     # This function splits the task content into separate exercises
@@ -195,20 +192,75 @@ def extract_class_name(code):
                 return parts[2]
     return None
 
-def commit_and_push_changes(commit_message):
+
+def clean_class_block(block):
+    """Ensure the block only contains content until the last closing brace."""
+    
+    # Find the position of the last closing brace '}' in the block
+    last_closing_brace = block.rfind("}")
+    
+    if last_closing_brace != -1:
+        # Truncate the block at the last closing brace
+        block = block[:last_closing_brace + 1]
+    
+    return block
+
+def check_and_add_missing_imports(block):
+    """
+    Check the class block for missing imports and add necessary imports based on the content.
+    """
+    required_imports = {
+        "List": "import java.util.List;",
+        "ArrayList": "import java.util.ArrayList;",
+        "Map": "import java.util.Map;",
+        "HashMap": "import java.util.HashMap;",
+        "Scanner": "import java.util.Scanner;",
+        "Set": "import java.util.Set;",
+        "HashSet": "import java.util.HashSet;",
+        "Random": "import java.util.Random;"
+    }
+
+    # Extract existing imports from the block
+    existing_imports = re.findall(r'^\s*import .*;', block, re.MULTILINE)
+
+    # Add missing imports
+    imports_to_add = []
+    for class_name, import_statement in required_imports.items():
+        if class_name in block and import_statement not in existing_imports:
+            imports_to_add.append(import_statement)
+
+    # Prepend missing imports at the start of the block
+    if imports_to_add:
+        block = "\n".join(imports_to_add) + "\n\n" + block
+
+    return block
+
+def generate_with_retries(client, prompt, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-2024-08-06",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"Error generating solution code: {e}")
+            if attempt < max_retries - 1:
+                print("Retrying...")
+    return None
+
+def commit_and_push_changes(branch_name, directory_path):
     try:
         subprocess.run(["git", "config", "--global", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "config", "--global", "user.name", "github-actions"], check=True)
 
-        # Check if there are changes to commit
-        status_output = subprocess.check_output(["git", "status", "--porcelain"]).decode().strip()
-        if not status_output:
-            print("No changes to commit.")
-            return
-
-        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+        subprocess.run(["git", "add", directory_path], check=True)
+        subprocess.run(["git", "commit", "-m", "Add generated solution"], check=True)
         subprocess.run(
-            ["git", "push"],
+            ["git", "push", "--set-upstream", "origin", branch_name],
             check=True,
             env=dict(os.environ, GIT_ASKPASS='echo', GIT_USERNAME='x-access-token', GIT_PASSWORD=os.getenv('GITHUB_TOKEN'))
         )
@@ -216,10 +268,11 @@ def commit_and_push_changes(commit_message):
         print(f"Error committing and pushing changes: {e}")
         sys.exit(1)
 
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python generate_solution.py <api_key>")
-        sys.exit(1)
+if len(sys.argv) != 3:
+    print("Error: Missing required command line arguments 'api_key' and 'branch_name'")
+    sys.exit(1)
 
-    api_key = sys.argv[1]
-    main(api_key)
+api_key = sys.argv[1]
+branch_name = sys.argv[2]
+
+main(api_key, branch_name)
