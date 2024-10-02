@@ -19,8 +19,6 @@ def main(api_key, branch_name):
     # Initialize the OpenAI client
     client = OpenAI(api_key=api_key)
 
-    # Checkout the branch where the new task exists
-    checkout_branch(branch_name)
 
     # Read the new task from file
     new_task_path = os.path.join("tasks", "new_task.md")
@@ -53,6 +51,11 @@ def main(api_key, branch_name):
                     "role": "user",
                     "content": (
                         "// Example of a simple class modeling arrays\n"
+                        "/**\n"
+                        "* Reference solutions for Task 5, Arrays\n"
+                        "* @author Linus Östlund\n"
+                        "* This would not have been possible without my computer, a M1 Macbook Air.\n"
+                        "*/\n"
                         "public class Arrays {\n"
                         "    public static int average(int[] array) {\n"
                         "        int sum = 0;\n"
