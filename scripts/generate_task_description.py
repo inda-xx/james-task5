@@ -5,7 +5,7 @@ from datetime import datetime
 import pytz
 from pytz import timezone
 
-# Assuming you have an OpenAI client similar to the one in your original script
+# Import the OpenAI client
 from openai import OpenAI
 
 def main(api_key):
@@ -41,15 +41,46 @@ def main(api_key):
 
     # Build the messages for the OpenAI API
     messages = [
-        {"role": "system", "content": "You are an experienced programming instructor creating detailed tasks for university-level students. The tasks should be challenging and pedagogically valuable."},
-        {"role": "user", "content": f"Create a new programming task in {language} with the following theme:\n\n**Theme**: {theme}\n\nThe task must include and integrate the following learning goals:\n{learning_goals}\n\nThe task should include multiple exercises that gradually increase in difficulty.\n\n- **Exercises 1 & 2**: These should challenge the students' theoretical understanding of the learning goals. Include conceptual questions, explanations, and require students to demonstrate their understanding without coding.\n\n- **Exercises 3 & 4**: These should significantly challenge the students' coding capabilities, requiring them to apply the concepts in practical coding tasks.\n\nUse the following exercises from the original task as inspiration for each exercise in the new task. Adapt them to fit the new theme and ensure they cover the learning goals.\n\n"}
+        {
+            "role": "system",
+            "content": (
+                "You are an experienced programming instructor creating detailed tasks for university-level students. "
+                "The tasks should be challenging, pedagogically valuable, and should include detailed descriptions with code snippets where necessary."
+            )
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Create a new programming task in {language} with the following theme:\n\n"
+                f"**Theme**: {theme}\n\n"
+                f"The task must include and integrate the following learning goals:\n{learning_goals}\n\n"
+                "The task should include at least six exercises that gradually increase in difficulty. Each exercise should be well-detailed and include code snippets where necessary.\n\n"
+                "- **Exercises 1 & 2**: Focus on theoretical aspects of the learning goals. Challenge students' understanding through conceptual questions and explanations without requiring coding.\n\n"
+                "- **Exercises 3 & 4**: Focus on combining and integrating the concepts into coding. Require students to write code that applies the concepts in practical scenarios.\n\n"
+                "- **Exercises 5 & 6**: Are challenging coding tasks that require significant learning and coding effort to complete. These should be step-by-step tasks that build upon previous exercises.\n\n"
+                "Use the following exercises from the original task as inspiration for each exercise in the new task. Adapt them to fit the new theme and ensure they cover the learning goals.\n\n"
+            )
+        }
     ]
 
     # Add each exercise chunk as a separate message
     for i, chunk in enumerate(exercise_chunks):
-        messages.append({"role": "assistant", "content": f"Here is exercise {i+1} from the original task for inspiration:\n\n{chunk}\n\nPlease adapt this exercise to fit the new theme and include it in the new task."})
+        messages.append({
+            "role": "assistant",
+            "content": (
+                f"Here is exercise {i+1} from the original task for inspiration:\n\n{chunk}\n\n"
+                "Please adapt this exercise to fit the new theme and include it in the new task."
+            )
+        })
 
-    messages.append({"role": "user", "content": "Please provide the complete new task description, including all exercises, instructions, and any necessary details. Include titles, subtitles, and emojis for aesthetics to make the description detailed, well-structured, and engaging. Ensure the task is challenging and pedagogically valuable, with the first two exercises focusing on theoretical understanding and the last two on practical coding skills."})
+    messages.append({
+        "role": "user",
+        "content": (
+            "Please provide the complete new task description, including all exercises, instructions, and any necessary details. "
+            "Include titles, subtitles, and emojis for aesthetics to make the description detailed, well-structured, and engaging. "
+            "Ensure the task is challenging and pedagogically valuable, following the structure specified."
+        )
+    })
 
     # Call OpenAI API to generate the task description
     response_content = generate_with_retries(client, messages, max_retries=3)
@@ -104,7 +135,7 @@ def generate_with_retries(client, messages, max_retries=3):
             print(f"Error generating task description: {e}")
             if attempt < max_retries - 1:
                 print("Retrying...")
-        return None
+    return None
 
 def create_branch(branch_name):
     try:
