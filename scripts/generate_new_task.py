@@ -137,7 +137,7 @@ def generate_exercises(client, theme, language, learning_goals, difficulty):
 def generate_with_retries(client, prompt, max_retries=3):
     for attempt in range(max_retries):
         try:
-            response = client.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-4o-2024-08-06",
                 messages=[
                     {"role": "system", "content": "You are an assistant that helps generate programming tasks for students, focusing on integrating provided themes with specified learning goals."},
