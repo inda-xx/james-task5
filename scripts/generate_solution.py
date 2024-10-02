@@ -1,23 +1,32 @@
 import os
-import re
 import sys
 import subprocess
-from openai import OpenAI
+import openai
+from datetime import datetime
+import pytz
+from pytz import timezone
 
 def main(api_key, branch_name):
     if not api_key:
         print("Error: OpenAI API key is missing.")
         sys.exit(1)
-
-    client = OpenAI(api_key=api_key)
-
-    # Read the new task description
-    try:
-        with open("tasks/new_task.md", "r") as file:
-            new_task_content = file.read()
-    except FileNotFoundError:
-        print("Error: new_task.md file not found.")
+    if not branch_name:
+        print("Error: Branch name is missing.")
         sys.exit(1)
+
+    # Initialize OpenAI API
+    openai.api_key = api_key
+
+    # Checkout the branch where the new task exists
+    checkout_branch(branch_name)
+
+    # Read the new task from file
+    new_task_path = os.path.join("tasks", "new_task.md")
+    if not os.path.exists(new_task_path):
+        print(f"Error: New task file not found at {new_task_path}")
+        sys.exit(1)
+    with open(new_task_path, "r") as f:
+        new_task_content = f.read()
 
     # Split the new task into exercises
     exercise_chunks = split_task_into_exercises(new_task_content)
@@ -114,7 +123,7 @@ def main(api_key, branch_name):
         save_solution(solution_content, exercise_num)
 
     # Commit and push changes
-    commit_and_push_changes("Add solutions to exercises")
+    commit_and_push_changes(branch_name, "Add solutions to exercises")
 
 def split_task_into_exercises(task_content):
     # This function splits the task content into separate exercises
@@ -151,13 +160,16 @@ def requires_coding(exercise_text):
 def generate_with_retries(prompt, max_retries=3):
     for attempt in range(max_retries):
         try:
-            response = openai.Completion.create(
-                engine="gpt-4o-2024-08-06",
-                prompt=prompt,
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert Java programmer and educator."},
+                    {"role": "user", "content": prompt}
+                ],
                 max_tokens=1500,
                 temperature=0
             )
-            return response.choices[0].text.strip()
+            return response.choices[0].message.content.strip()
         except Exception as e:
             print(f"Error generating solution: {e}")
             if attempt < max_retries - 1:
@@ -189,14 +201,21 @@ def extract_class_name(code):
                 return parts[2]
     return None
 
-def commit_and_push_changes(commit_message):
+def checkout_branch(branch_name):
+    try:
+        subprocess.run(["git", "checkout", branch_name], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error checking out branch {branch_name}: {e}")
+        sys.exit(1)
+
+def commit_and_push_changes(branch_name, commit_message):
     try:
         subprocess.run(["git", "config", "--global", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "config", "--global", "user.name", "github-actions"], check=True)
 
         subprocess.run(["git", "commit", "-m", commit_message], check=True)
         subprocess.run(
-            ["git", "push"],
+            ["git", "push", "--set-upstream", "origin", branch_name],
             check=True,
             env=dict(os.environ, GIT_ASKPASS='echo', GIT_USERNAME='x-access-token', GIT_PASSWORD=os.getenv('GITHUB_TOKEN'))
         )
@@ -205,9 +224,10 @@ def commit_and_push_changes(commit_message):
         sys.exit(1)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python generate_solution.py <api_key>")
+    if len(sys.argv) != 3:
+        print("Usage: python generate_solution.py <api_key> <branch_name>")
         sys.exit(1)
 
     api_key = sys.argv[1]
-    main(api_key)
+    branch_name = sys.argv[2]
+    main(api_key, branch_name)
