@@ -1,26 +1,23 @@
 import os
+import re
 import sys
 import subprocess
-import openai
-from datetime import datetime
-import pytz
-from pytz import timezone
+from openai import OpenAI
 
-def main(api_key):
+def main(api_key, branch_name):
     if not api_key:
         print("Error: OpenAI API key is missing.")
         sys.exit(1)
 
-    # Initialize OpenAI API
-    openai.api_key = api_key
+    client = OpenAI(api_key=api_key)
 
-    # Read the new task from file
-    new_task_path = os.path.join("tasks", "new_task.md")
-    if not os.path.exists(new_task_path):
-        print(f"Error: New task file not found at {new_task_path}")
+    # Read the new task description
+    try:
+        with open("tasks/new_task.md", "r") as file:
+            new_task_content = file.read()
+    except FileNotFoundError:
+        print("Error: new_task.md file not found.")
         sys.exit(1)
-    with open(new_task_path, "r") as f:
-        new_task_content = f.read()
 
     # Split the new task into exercises
     exercise_chunks = split_task_into_exercises(new_task_content)
