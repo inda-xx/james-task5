@@ -107,9 +107,6 @@ def main(api_key, branch_name):
     hidden_tasks_dir = os.path.join(".hidden_tasks")
     os.makedirs(hidden_tasks_dir, exist_ok=True)
 
-    # Initialize a variable to hold all generated code (if needed)
-    all_generated_code = ""
-
     # Generate solutions
     for exercise_num, exercise_content in coding_exercises.items():
         # Build the prompt for the AI
@@ -134,9 +131,6 @@ def main(api_key, branch_name):
 
         # Save the solution code to .hidden_tasks
         save_solution(hidden_tasks_dir, solution_content, exercise_num)
-
-        # Optionally, accumulate all generated code
-        all_generated_code += solution_content + "\n\n"
 
     # Commit and push changes
     commit_and_push_changes(branch_name, hidden_tasks_dir)
@@ -191,7 +185,6 @@ def generate_with_retries(client, prompt, max_retries=3):
     return None
 
 def save_solution(hidden_tasks_dir, solution_content, exercise_num):
-    # Save the solution code to .hidden_tasks directory
     # Extract the class name from the code
     class_name = extract_class_name(solution_content)
     if not class_name:
@@ -260,7 +253,7 @@ def commit_and_push_changes(branch_name, hidden_tasks_dir):
         subprocess.run(["git", "config", "--global", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "config", "--global", "user.name", "github-actions"], check=True)
 
-        # Add the .hidden_tasks directory to git (in case files were not added)
+        # Add the .hidden_tasks directory to git
         subprocess.run(["git", "add", hidden_tasks_dir], check=True)
 
         # Check if there are changes to commit
@@ -269,7 +262,7 @@ def commit_and_push_changes(branch_name, hidden_tasks_dir):
             print("No changes to commit.")
             return
 
-        subprocess.run(["git", "commit", "-m", "Add solutions to exercises"], check=True)
+        subprocess.run(["git", "commit", "-m", f"Add solutions to exercises in {hidden_tasks_dir}"], check=True)
         subprocess.run(
             ["git", "push", "--set-upstream", "origin", branch_name],
             check=True,
