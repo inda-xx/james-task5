@@ -1,14 +1,20 @@
 import os
-import re
 import sys
 import subprocess
+import re  # Added for regex operations in the new functions
+from datetime import datetime
+import pytz
+from pytz import timezone
+
+# Assuming you have an OpenAI client similar to the one in your original script
 from openai import OpenAI
 
-def main(api_key, branch_name):
+def main(api_key):
     if not api_key:
         print("Error: OpenAI API key is missing.")
         sys.exit(1)
 
+    # Initialize the OpenAI client
     client = OpenAI(api_key=api_key)
 
     # Read the new task from file
@@ -105,16 +111,20 @@ def main(api_key, branch_name):
         )
 
         # Call OpenAI API to generate the solution
-        solution_content = generate_with_retries(prompt, max_retries=3)
+        solution_content = generate_with_retries(client, prompt, max_retries=3)
         if solution_content is None:
             print(f"Error: Failed to generate solution for exercise {exercise_num} after multiple retries.")
             continue
+
+        # Clean and process the generated code
+        solution_content = clean_class_block(solution_content)
+        solution_content = check_and_add_missing_imports(solution_content)
 
         # Save the solution code to .hidden_tasks
         save_solution(solution_content, exercise_num)
 
     # Commit and push changes
-    commit_and_push_changes(branch_name, "Add solutions to exercises")
+    commit_and_push_changes("Add solutions to exercises")
 
 def split_task_into_exercises(task_content):
     # This function splits the task content into separate exercises
@@ -148,17 +158,15 @@ def requires_coding(exercise_text):
     keywords = ['Write a method', 'Implement', 'Create a class', 'Code', 'Program', 'Develop', 'Design']
     return any(keyword.lower() in exercise_text.lower() for keyword in keywords)
 
-def generate_with_retries(prompt, max_retries=3):
+def generate_with_retries(client, prompt, max_retries=3):
     for attempt in range(max_retries):
         try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
+            response = client.chat.completions.create(
+                model="gpt-4o-2024-08-06",
                 messages=[
                     {"role": "system", "content": "You are an expert Java programmer and educator."},
                     {"role": "user", "content": prompt}
-                ],
-                max_tokens=1500,
-                temperature=0
+                ]
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
@@ -192,11 +200,10 @@ def extract_class_name(code):
                 return parts[2]
     return None
 
-
 def clean_class_block(block):
     """Ensure the block only contains content until the last closing brace."""
     
-    # Find the position of the last closing brace '}' in the block
+    # Find the position of the last closing brace '}'
     last_closing_brace = block.rfind("}")
     
     if last_closing_brace != -1:
@@ -235,32 +242,20 @@ def check_and_add_missing_imports(block):
 
     return block
 
-def generate_with_retries(client, prompt, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-2024-08-06",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"Error generating solution code: {e}")
-            if attempt < max_retries - 1:
-                print("Retrying...")
-    return None
-
-def commit_and_push_changes(branch_name, directory_path):
+def commit_and_push_changes(commit_message):
     try:
         subprocess.run(["git", "config", "--global", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "config", "--global", "user.name", "github-actions"], check=True)
 
-        subprocess.run(["git", "add", directory_path], check=True)
-        subprocess.run(["git", "commit", "-m", "Add generated solution"], check=True)
+        # Check if there are changes to commit
+        status_output = subprocess.check_output(["git", "status", "--porcelain"]).decode().strip()
+        if not status_output:
+            print("No changes to commit.")
+            return
+
+        subprocess.run(["git", "commit", "-m", commit_message], check=True)
         subprocess.run(
-            ["git", "push", "--set-upstream", "origin", branch_name],
+            ["git", "push"],
             check=True,
             env=dict(os.environ, GIT_ASKPASS='echo', GIT_USERNAME='x-access-token', GIT_PASSWORD=os.getenv('GITHUB_TOKEN'))
         )
@@ -268,11 +263,10 @@ def commit_and_push_changes(branch_name, directory_path):
         print(f"Error committing and pushing changes: {e}")
         sys.exit(1)
 
-if len(sys.argv) != 3:
-    print("Error: Missing required command line arguments 'api_key' and 'branch_name'")
-    sys.exit(1)
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python generate_solution.py <api_key>")
+        sys.exit(1)
 
-api_key = sys.argv[1]
-branch_name = sys.argv[2]
-
-main(api_key, branch_name)
+    api_key = sys.argv[1]
+    main(api_key)
