@@ -101,6 +101,7 @@ def main(api_key, branch_name):
         "initializers or class definitions from subsequent files.\n"
         "Ensure all imports, public classes, and everything related to the class is included in the appropriate file.\n"
         "Write NO TEXT beyond the code itself, whatsoever."
+        "IMPORTANT: The response must be plain Java code with no markdown formatting or ```java blocks. "
     )
 
     # Ensure the .hidden_tasks directory exists
