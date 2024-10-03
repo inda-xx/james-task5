@@ -245,24 +245,13 @@ def check_and_add_missing_imports(block):
 
     return block
 
-def commit_and_push_changes(branch_name, hidden_tasks_dir):
+def commit_and_push_changes(branch_name, directory_path):
     try:
-        # Ensure we're on the correct branch
-        subprocess.run(["git", "checkout", branch_name], check=True)
-
         subprocess.run(["git", "config", "--global", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "config", "--global", "user.name", "github-actions"], check=True)
 
-        # Add the .hidden_tasks directory to git
-        subprocess.run(["git", "add", hidden_tasks_dir], check=True)
-
-        # Check if there are changes to commit
-        status_output = subprocess.check_output(["git", "status", "--porcelain"]).decode().strip()
-        if not status_output:
-            print("No changes to commit.")
-            return
-
-        subprocess.run(["git", "commit", "-m", f"Add solutions to exercises in {hidden_tasks_dir}"], check=True)
+        subprocess.run(["git", "add", directory_path], check=True)
+        subprocess.run(["git", "commit", "-m", "Add generated solution"], check=True)
         subprocess.run(
             ["git", "push", "--set-upstream", "origin", branch_name],
             check=True,
@@ -271,6 +260,7 @@ def commit_and_push_changes(branch_name, hidden_tasks_dir):
     except subprocess.CalledProcessError as e:
         print(f"Error committing and pushing changes: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
