@@ -1,10 +1,7 @@
 import os
 import sys
 import subprocess
-import re  # Added for regex operations in the new functions
-from datetime import datetime
-
-# Assuming you have an OpenAI client similar to the one in your original script
+import re  # For regex operations
 from openai import OpenAI
 
 def main(api_key, branch_name):
@@ -18,193 +15,131 @@ def main(api_key, branch_name):
     # Initialize the OpenAI client
     client = OpenAI(api_key=api_key)
 
-    # Note: We will not switch branches to avoid previous issues.
-
-    # Read the new task from file
+    # Read the new task description
     new_task_path = os.path.join("tasks", "new_task.md")
     if not os.path.exists(new_task_path):
         print(f"Error: New task file not found at {new_task_path}")
         sys.exit(1)
     with open(new_task_path, "r") as f:
-        new_task_content = f.read()
+        task_description = f.read()
 
     # Split the new task into exercises
-    exercise_chunks = split_task_into_exercises(new_task_content)
+    exercise_chunks = split_task_into_exercises(task_description)
 
-    # Generate solutions for exercises that require coding
-    # Assuming that exercises requiring coding start from Exercise 3
-    coding_exercises = identify_coding_exercises(exercise_chunks)
+    # Combine all exercises into a single prompt
+    prompt = build_prompt(task_description)
 
-    # Sample code to use as inspiration
-    sample_code = """
-    // Example of a simple class modeling arrays
-    /**
-    * Reference solutions for Task 5, Arrays
-    * @author Linus Östlund
-    * This would not have been possible without my computer, a M1 Macbook Air.
-    */
-    public class Arrays {
-
-        /**
-        * Count the average value of array with integers
-        * @param array of integers
-        * @return the average of element integer sum
-        */
-        public static int average(int[] array) {
-            int sum = 0;
-            for (int i = 0; i < array.length; i++) {
-                sum += array[i];
-            }
-            return sum / array.length;
-        }
-
-        // ... rest of the sample code ...
-    }
-
-    // Example of a simple class using array lists
-    import java.util.ArrayList;
-
-    public class SetTheory {
-
-        // The maximum threshold
-        private static final int MAX = 100;
-
-        /**
-        * Generate an ArrayList between min and max
-        * @param min lower bound, inclusive
-        * @param max upper bound, non-inclusive
-        * @return an ArrayList with all integers in [min, max - 1]
-        */
-        public static ArrayList<Integer> generateSet(int min, int max) {
-            ArrayList<Integer> set = new ArrayList<>();
-            if (min >= max) {
-                // return empty list
-                return set;
-            } else {
-                // Ternary operator to see if max > 100
-                for (int i = Math.max(min, 0); i < Math.min(max, MAX); i++) {
-                    set.add(i);
-                }
-                return set;
-            }
-        }
-
-        // ... rest of the sample code ...
-    }
-    """
-
-    # Additional instructions to include in the prompt
-    additional_instructions = (
-        "Ensure that each class is saved in its own appropriately named file, and that there are no 'leftover' "
-        "initializers or class definitions from subsequent files.\n"
-        "Ensure all imports, public classes, and everything related to the class is included in the appropriate file.\n"
-        "Write NO TEXT beyond the code itself, whatsoever."
-        "IMPORTANT: The response must be plain Java code with no markdown formatting or ```java blocks. "
-        "Ensure that each class is entirely self-contained and is not left incomplete. "
-    )
+    # Call OpenAI API to generate the solution code
+    response_content = generate_with_retries(client, prompt, max_retries=3)
+    if response_content is None:
+        print("Error: Failed to generate solution code after multiple retries.")
+        sys.exit(1)
 
     # Ensure the .hidden_tasks directory exists
     hidden_tasks_dir = os.path.join(".hidden_tasks")
     os.makedirs(hidden_tasks_dir, exist_ok=True)
 
-    # Generate solutions
-    for exercise_num, exercise_content in coding_exercises.items():
-        # Build the prompt for the AI
-        prompt = (
-            f"You are an expert Java programmer and educator. Generate a complete and correct solution "
-            f"to the following exercise, including any necessary code. The code should be robust, well-documented "
-            f"with comments where appropriate, and adhere to best practices.\n\n"
-            f"Exercise {exercise_num}:\n{exercise_content}\n\n"
-            f"Use the following sample code as inspiration:\n{sample_code}\n\n"
-            f"{additional_instructions}"
-        )
-
-        # Call OpenAI API to generate the solution
-        solution_content = generate_with_retries(client, prompt, max_retries=3)
-        if solution_content is None:
-            print(f"Error: Failed to generate solution for exercise {exercise_num} after multiple retries.")
-            continue
-
-        # Clean and process the generated code
-        solution_content = clean_class_block(solution_content)
-        solution_content = check_and_add_missing_imports(solution_content)
-
-        # Save the solution code to .hidden_tasks
-        save_solution(hidden_tasks_dir, solution_content, exercise_num)
+    # Write the generated code to Java files
+    write_generated_code_to_files(hidden_tasks_dir, response_content)
 
     # Commit and push changes
     commit_and_push_changes(branch_name, hidden_tasks_dir)
 
 def split_task_into_exercises(task_content):
-    # This function splits the task content into separate exercises
     # Assuming each exercise starts with '#### Exercise'
-    exercises = {}
+    exercises = []
     lines = task_content.split('\n')
     current_exercise = []
-    exercise_num = None
+    in_exercise = False
     for line in lines:
         if line.strip().startswith('#### Exercise'):
-            if current_exercise and exercise_num is not None:
-                exercises[exercise_num] = '\n'.join(current_exercise)
+            if current_exercise:
+                exercises.append('\n'.join(current_exercise))
                 current_exercise = []
-            exercise_num = line.strip().split(' ')[2]
-        elif exercise_num is not None:
+            in_exercise = True
+        if in_exercise:
             current_exercise.append(line)
-    if current_exercise and exercise_num is not None:
-        exercises[exercise_num] = '\n'.join(current_exercise)
+    if current_exercise:
+        exercises.append('\n'.join(current_exercise))
     return exercises
 
-def identify_coding_exercises(exercises):
-    # Identify which exercises require coding
-    coding_exercises = {}
-    for num, content in exercises.items():
-        if requires_coding(content):
-            coding_exercises[num] = content
-    return coding_exercises
+def build_prompt(task_description):
+    # Inspirational code snippet for the solution
+    inspirational_code = """
+    // Example of a simple class modeling arrays
+    /**
+    * Reference solutions for Task 5, Arrays
+    * @author ...
+    */
+    public class Arrays {
+        // Sample methods...
+    }
 
-def requires_coding(exercise_text):
-    # Simple heuristic to determine if an exercise requires coding
-    keywords = ['Write a method', 'Implement', 'Create a class', 'Code', 'Program', 'Develop', 'Design']
-    return any(keyword.lower() in exercise_text.lower() for keyword in keywords)
+    // Example of a simple class using array lists
+    public class SetTheory {
+        // Sample methods...
+    }
+    """
 
-def generate_with_retries(client, prompt, max_retries=3):
-    for attempt in range(max_retries):
+    additional_instructions = (
+        "IMPORTANT: The response must be plain Java code with no markdown formatting or ```java blocks. "
+        "Ensure that each class is entirely self-contained and is not left incomplete. "
+        "No part of the next file should be left in the current file. "
+        "Ensure that each class is saved in its own appropriately named file, and that there are no 'leftover' initializers or class definitions from subsequent files. "
+        "Ensure all imports, public classes, and everything related to the class is included in the appropriate file. "
+        "Write NO TEXT beyond the code itself, whatsoever. "
+    )
+
+    prompt = (
+        f"Based on the following task description, generate complete and functional Java solutions for each coding exercise. "
+        f"The solutions should be well-structured, use meaningful variable names, include necessary comments for clarity, "
+        f"and be ready to pass a comprehensive set of unit tests.\n\n"
+        f"### Task Description\n\n"
+        f"{task_description}\n\n"
+        f"### Inspirational Code Snippet\n\n"
+        f"{inspirational_code}\n\n"
+        f"{additional_instructions}"
+    )
+
+    return prompt
+
+def write_generated_code_to_files(directory, code_content):
+    """
+    Write generated Java code to appropriate files in the specified directory.
+    Handles cases where leftover comments or initializations are present.
+    Also ensures that import statements and public class declarations are captured.
+    """
+    # Split the code content into separate class definitions
+    class_blocks = re.split(r'(?:^|\n)(?=public\s+class\s)', code_content)
+
+    for block in class_blocks:
+        if not block.strip():
+            continue  # Skip empty blocks
+
+        # Extract class name
+        class_name_match = re.search(r'public\s+class\s+(\w+)', block)
+        if class_name_match:
+            class_name = class_name_match.group(1)
+        else:
+            print(f"Skipping block due to missing class name:\n{block[:50]}")
+            continue
+
+        # Clean up the block, removing content after the last closing brace
+        cleaned_block = clean_class_block(block)
+
+        # Ensure the necessary imports are included
+        cleaned_block = check_and_add_missing_imports(cleaned_block)
+
+        # Write cleaned code to a file
+        file_name = f"{class_name}.java"
+        file_path = os.path.join(directory, file_name)
+
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-2024-08-06",
-                messages=[
-                    {"role": "system", "content": "You are an expert Java programmer and educator."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"Error generating solution: {e}")
-            if attempt < max_retries - 1:
-                print("Retrying...")
-    return None
-
-def save_solution(hidden_tasks_dir, solution_content, exercise_num):
-    # Extract the class name from the code
-    class_name = extract_class_name(solution_content)
-    if not class_name:
-        class_name = f"Exercise_{exercise_num}_Solution"
-    file_name = f"{class_name}.java"
-    file_path = os.path.join(hidden_tasks_dir, file_name)
-    with open(file_path, "w") as file:
-        file.write(solution_content)
-    # Add the file to git
-    subprocess.run(["git", "add", file_path], check=True)
-
-def extract_class_name(code):
-    # Simple parser to extract the class name from the code
-    lines = code.split('\n')
-    for line in lines:
-        if line.strip().startswith("public class"):
-            parts = line.strip().split()
-            if len(parts) >= 3:
-                return parts[2]
-    return None
+            with open(file_path, "w") as java_file:
+                java_file.write(cleaned_block)
+            print(f"Successfully wrote {file_name}")
+        except IOError as e:
+            print(f"Error writing file {file_name}: {e}")
 
 def clean_class_block(block):
     """Ensure the block only contains content until the last closing brace."""
@@ -245,7 +180,24 @@ def check_and_add_missing_imports(block):
 
     return block
 
-def commit_and_push_changes(branch_name, hidden_tasks_dir):
+def generate_with_retries(client, prompt, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-2024-08-06",
+                messages=[
+                    {"role": "system", "content": "You are an expert Java programmer and educator."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"Error generating solution code: {e}")
+            if attempt < max_retries - 1:
+                print("Retrying...")
+    return None
+
+def commit_and_push_changes(branch_name, directory_path):
     try:
         # Ensure we're on the correct branch
         subprocess.run(["git", "checkout", branch_name], check=True)
@@ -254,19 +206,21 @@ def commit_and_push_changes(branch_name, hidden_tasks_dir):
         subprocess.run(["git", "config", "--global", "user.name", "github-actions"], check=True)
 
         # Add the .hidden_tasks directory to git
-        subprocess.run(["git", "add", hidden_tasks_dir], check=True)
+        subprocess.run(["git", "add", directory_path], check=True)
 
-        # Check if there are changes to commit
-        status_output = subprocess.check_output(["git", "status", "--porcelain"]).decode().strip()
-        if not status_output:
-            print("No changes to commit.")
-            return
+        # Commit the changes
+        subprocess.run(["git", "commit", "-m", "Add generated solution"], check=True)
 
-        subprocess.run(["git", "commit", "-m", f"Add solutions to exercises in {hidden_tasks_dir}"], check=True)
+        # Push the changes
         subprocess.run(
             ["git", "push", "--set-upstream", "origin", branch_name],
             check=True,
-            env=dict(os.environ, GIT_ASKPASS='echo', GIT_USERNAME='x-access-token', GIT_PASSWORD=os.getenv('GITHUB_TOKEN'))
+            env={
+                **os.environ,
+                "GIT_ASKPASS": "echo",
+                "GIT_USERNAME": "x-access-token",
+                "GIT_PASSWORD": os.getenv("GITHUB_TOKEN")
+            }
         )
     except subprocess.CalledProcessError as e:
         print(f"Error committing and pushing changes: {e}")
