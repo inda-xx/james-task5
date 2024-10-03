@@ -3,8 +3,6 @@ import sys
 import subprocess
 import re  # Added for regex operations in the new functions
 from datetime import datetime
-import pytz
-from pytz import timezone
 
 # Assuming you have an OpenAI client similar to the one in your original script
 from openai import OpenAI
@@ -102,6 +100,7 @@ def main(api_key, branch_name):
         "Ensure all imports, public classes, and everything related to the class is included in the appropriate file.\n"
         "Write NO TEXT beyond the code itself, whatsoever."
         "IMPORTANT: The response must be plain Java code with no markdown formatting or ```java blocks. "
+        "Ensure that each class is entirely self-contained and is not left incomplete. "
     )
 
     # Ensure the .hidden_tasks directory exists
