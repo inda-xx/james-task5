@@ -103,6 +103,13 @@ def main(api_key, branch_name):
         "Write NO TEXT beyond the code itself, whatsoever."
     )
 
+    # Ensure the .hidden_tasks directory exists
+    hidden_tasks_dir = os.path.join(".hidden_tasks")
+    os.makedirs(hidden_tasks_dir, exist_ok=True)
+
+    # Initialize a variable to hold all generated code (if needed)
+    all_generated_code = ""
+
     # Generate solutions
     for exercise_num, exercise_content in coding_exercises.items():
         # Build the prompt for the AI
@@ -126,10 +133,13 @@ def main(api_key, branch_name):
         solution_content = check_and_add_missing_imports(solution_content)
 
         # Save the solution code to .hidden_tasks
-        save_solution(solution_content, exercise_num)
+        save_solution(hidden_tasks_dir, solution_content, exercise_num)
+
+        # Optionally, accumulate all generated code
+        all_generated_code += solution_content + "\n\n"
 
     # Commit and push changes
-    commit_and_push_changes(branch_name, "Add solutions to exercises")
+    commit_and_push_changes(branch_name, hidden_tasks_dir)
 
 def split_task_into_exercises(task_content):
     # This function splits the task content into separate exercises
@@ -180,10 +190,8 @@ def generate_with_retries(client, prompt, max_retries=3):
                 print("Retrying...")
     return None
 
-def save_solution(solution_content, exercise_num):
+def save_solution(hidden_tasks_dir, solution_content, exercise_num):
     # Save the solution code to .hidden_tasks directory
-    hidden_tasks_dir = ".hidden_tasks"
-    os.makedirs(hidden_tasks_dir, exist_ok=True)
     # Extract the class name from the code
     class_name = extract_class_name(solution_content)
     if not class_name:
@@ -244,7 +252,7 @@ def check_and_add_missing_imports(block):
 
     return block
 
-def commit_and_push_changes(branch_name, commit_message):
+def commit_and_push_changes(branch_name, hidden_tasks_dir):
     try:
         # Ensure we're on the correct branch
         subprocess.run(["git", "checkout", branch_name], check=True)
@@ -252,13 +260,16 @@ def commit_and_push_changes(branch_name, commit_message):
         subprocess.run(["git", "config", "--global", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "config", "--global", "user.name", "github-actions"], check=True)
 
+        # Add the .hidden_tasks directory to git (in case files were not added)
+        subprocess.run(["git", "add", hidden_tasks_dir], check=True)
+
         # Check if there are changes to commit
         status_output = subprocess.check_output(["git", "status", "--porcelain"]).decode().strip()
         if not status_output:
             print("No changes to commit.")
             return
 
-        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+        subprocess.run(["git", "commit", "-m", "Add solutions to exercises"], check=True)
         subprocess.run(
             ["git", "push", "--set-upstream", "origin", branch_name],
             check=True,
