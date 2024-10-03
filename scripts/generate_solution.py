@@ -9,13 +9,18 @@ from pytz import timezone
 # Assuming you have an OpenAI client similar to the one in your original script
 from openai import OpenAI
 
-def main(api_key):
+def main(api_key, branch_name):
     if not api_key:
         print("Error: OpenAI API key is missing.")
+        sys.exit(1)
+    if not branch_name:
+        print("Error: Branch name is missing.")
         sys.exit(1)
 
     # Initialize the OpenAI client
     client = OpenAI(api_key=api_key)
+
+    # Note: We will not switch branches to avoid previous issues.
 
     # Read the new task from file
     new_task_path = os.path.join("tasks", "new_task.md")
@@ -124,7 +129,7 @@ def main(api_key):
         save_solution(solution_content, exercise_num)
 
     # Commit and push changes
-    commit_and_push_changes("Add solutions to exercises")
+    commit_and_push_changes(branch_name, "Add solutions to exercises")
 
 def split_task_into_exercises(task_content):
     # This function splits the task content into separate exercises
@@ -202,14 +207,11 @@ def extract_class_name(code):
 
 def clean_class_block(block):
     """Ensure the block only contains content until the last closing brace."""
-    
     # Find the position of the last closing brace '}'
     last_closing_brace = block.rfind("}")
-    
     if last_closing_brace != -1:
         # Truncate the block at the last closing brace
         block = block[:last_closing_brace + 1]
-    
     return block
 
 def check_and_add_missing_imports(block):
@@ -242,8 +244,11 @@ def check_and_add_missing_imports(block):
 
     return block
 
-def commit_and_push_changes(commit_message):
+def commit_and_push_changes(branch_name, commit_message):
     try:
+        # Ensure we're on the correct branch
+        subprocess.run(["git", "checkout", branch_name], check=True)
+
         subprocess.run(["git", "config", "--global", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "config", "--global", "user.name", "github-actions"], check=True)
 
@@ -255,7 +260,7 @@ def commit_and_push_changes(commit_message):
 
         subprocess.run(["git", "commit", "-m", commit_message], check=True)
         subprocess.run(
-            ["git", "push"],
+            ["git", "push", "--set-upstream", "origin", branch_name],
             check=True,
             env=dict(os.environ, GIT_ASKPASS='echo', GIT_USERNAME='x-access-token', GIT_PASSWORD=os.getenv('GITHUB_TOKEN'))
         )
@@ -264,9 +269,10 @@ def commit_and_push_changes(commit_message):
         sys.exit(1)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python generate_solution.py <api_key>")
+    if len(sys.argv) != 3:
+        print("Usage: python generate_solution.py <api_key> <branch_name>")
         sys.exit(1)
 
     api_key = sys.argv[1]
-    main(api_key)
+    branch_name = sys.argv[2]
+    main(api_key, branch_name)
